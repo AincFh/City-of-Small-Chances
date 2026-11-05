@@ -1,0 +1,64 @@
+name: ATLAS · Verify and Deploy City Life 3D
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: city-life-pages-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate original modules and release paths
+        run: |
+          set -euo pipefail
+          find src -name '*.js' -print0 | xargs -0 -n1 node --check
+          node --test tests/atlas-static.test.mjs
+          test -s assets/vendor/three/three.module.js
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install selenium==4.37.0
+      - name: Run real headless Chromium walk/clock/mobile smoke
+        run: python tests/atlas-browser.py
+      - name: Attach browser QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: city-life-atlas-qa
+          path: test-artifacts/city/
+          if-no-files-found: ignore
+      - name: Build self-contained static site
+        if: github.event_name != 'pull_request'
+        run: |
+          mkdir -p .atlas-site
+          cp index.html .nojekyll .atlas-site/
+          cp -R src styles assets .atlas-site/
+          test -s .atlas-site/index.html
+          test -s .atlas-site/assets/vendor/three/three.module.js
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          path: .atlas-site
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: verify
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
