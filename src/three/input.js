@@ -8,6 +8,8 @@
 export class Input {
   constructor(canvas) {
     this.keys = new Set();
+    this.touchKeys = new Set();
+    this.touchCleanup = [];
     // One-shot actions (interact / cancel), edge-triggered and consumed once.
     this._actions = [];
     // Accumulated drag, consumed by the camera each frame.
@@ -35,7 +37,8 @@ export class Input {
       const k = this._code(e);
       if (k) this.keys.delete(k);
     };
-    this._onBlur = () => this.keys.clear();
+    this._onBlur = () => { this.keys.clear(); this.touchKeys.clear();
+      document.querySelectorAll('[data-touch-dir]').forEach(b => b.classList.remove('pressed')); };
 
     this._onPointerDown = (e) => {
       this._dragging = true;
@@ -59,6 +62,35 @@ export class Input {
     window.addEventListener("keyup", this._onKeyUp);
     window.addEventListener("blur", this._onBlur);
     this._canvas = canvas;
+    // Real touch controls are separate from keyboard state so releasing a finger
+    // never cancels a simultaneously held physical keyboard key.
+    const controls = document.querySelectorAll('[data-touch-dir]');
+    controls.forEach(button => {
+      const direction = button.dataset.touchDir;
+      const down = e => {
+        e.preventDefault();
+        this.touchKeys.add(direction);
+        button.classList.add('pressed');
+        try { button.setPointerCapture(e.pointerId); } catch {}
+      };
+      const up = e => {
+        e.preventDefault();
+        this.touchKeys.delete(direction);
+        button.classList.remove('pressed');
+      };
+      for(const evt of ['pointerdown','pointerup','pointercancel','lostpointercapture'])
+        button.addEventListener(evt,evt==='pointerdown'?down:up);
+      this.touchCleanup.push(() => {
+        for(const evt of ['pointerdown','pointerup','pointercancel','lostpointercapture'])
+          button.removeEventListener(evt,evt==='pointerdown'?down:up);
+      });
+    });
+    const interact = document.getElementById('touch-interact');
+    if(interact){
+      const use = e => { e.preventDefault(); this._actions.push('interact'); };
+      interact.addEventListener('pointerdown',use);
+      this.touchCleanup.push(() => interact.removeEventListener('pointerdown',use));
+    }
     canvas.addEventListener("pointerdown", this._onPointerDown);
     window.addEventListener("pointermove", this._onPointerMove);
     window.addEventListener("pointerup", this._onPointerUp);
@@ -98,8 +130,9 @@ export class Input {
 
   // Per-frame movement axes in screen space: x = strafe (right+), z = forward(+).
   axis() {
-    const x = (this.keys.has("right") ? 1 : 0) - (this.keys.has("left") ? 1 : 0);
-    const z = (this.keys.has("up") ? 1 : 0) - (this.keys.has("down") ? 1 : 0);
+    const down = key => this.keys.has(key) || this.touchKeys.has(key);
+    const x = (down("right") ? 1 : 0) - (down("left") ? 1 : 0);
+    const z = (down("up") ? 1 : 0) - (down("down") ? 1 : 0);
     return { x, z };
   }
 
@@ -112,6 +145,8 @@ export class Input {
   }
 
   dispose() {
+    this.touchCleanup.forEach(fn => fn());
+    this.touchKeys.clear();
     window.removeEventListener("keydown", this._onKeyDown);
     window.removeEventListener("keyup", this._onKeyUp);
     window.removeEventListener("blur", this._onBlur);
