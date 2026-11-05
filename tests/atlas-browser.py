@@ -59,6 +59,16 @@ with socketserver.TCPServer(("127.0.0.1",0),Handler) as server:
         assert mobile["world"] and mobile["hasHUD"],mobile
         assert mobile["scrollWidth"]<=mobile["width"]+4,mobile
         assert abs(mobile["canvasWidth"]-mobile["width"])<5,mobile
+        # Hold the actual on-screen touch D-pad (not a synthetic Input.keys edit).
+        # This verifies that the same game movement code responds to real
+        # browser pointerdown/pointerup and the button releases its held state.
+        mobile_start=browser.execute_script("return [window.__game.player.root.position.x,window.__game.player.root.position.z]")
+        forward=browser.find_element("css selector","[data-touch-dir='up']")
+        ActionChains(browser).move_to_element(forward).click_and_hold().pause(.7).release().perform()
+        time.sleep(.25)
+        mobile_end=browser.execute_script("return [window.__game.player.root.position.x,window.__game.player.root.position.z]")
+        assert sum(abs(a-b) for a,b in zip(mobile_start,mobile_end))>.025,{"touchFrom":mobile_start,"touchTo":mobile_end}
+        assert not browser.execute_script("return window.__game.input.touchKeys.has('up')")
         browser.save_screenshot(str(OUT/"city-mobile.png"))
         severe=[e["message"] for e in browser.get_log("browser") if e["level"]=="SEVERE"]
         assert not [x for x in severe if "Uncaught" in x or "127.0.0.1" in x],severe
