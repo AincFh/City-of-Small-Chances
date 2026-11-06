@@ -25,20 +25,24 @@ jobs:
         run: |
           set -euo pipefail
           find src -name '*.js' -print0 | xargs -0 -n1 node --check
-          node --test tests/atlas-static.test.mjs
+          node --test tests/*.test.mjs
           test -s assets/vendor/three/three.module.js
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: python -m pip install selenium==4.37.0
       - name: Run real headless Chromium walk/clock/mobile smoke
-        run: python tests/atlas-browser.py
+        run: |
+          python tests/atlas-browser.py
+          python tests/harbor-living-browser.py
       - name: Attach browser QA artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: city-life-atlas-qa
-          path: test-artifacts/city/
+          path: |
+            test-artifacts/city/
+            test-artifacts/harbor-life/
           if-no-files-found: ignore
       - name: Build self-contained static site
         if: github.event_name != 'pull_request'
