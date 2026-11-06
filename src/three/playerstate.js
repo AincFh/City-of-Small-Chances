@@ -46,14 +46,98 @@ export function jobStatus(job, nowMin, player) {
   return { workable: true, cost };
 }
 
+/**
+ * Three genuinely useful harbour services and one free time-for-energy rest.
+ * Actions have hard cash, clock, stock and skill gates and apply atomically.
+ * One-off bicycle and twice-practised focus open jobs previously unreachable.
+ */
+export const HARBOR_SERVICES = Object.freeze([
+  { id: "noodles", name: "Eat a warm noodle bowl", cost: 12, minutes: 35, energy: 23,
+    detail: "A proper meal restores 23 energy and takes 35 minutes." },
+  { id: "rest", name: "Rest by the harbour", cost: 0, minutes: 130, energy: 27,
+    detail: "Find a quiet seat; recover 27 energy, but lose two hours of daylight." },
+  { id: "bicycle", name: "Buy a second-hand bicycle", cost: 95, minutes: 45,
+    detail: "Unlocks real courier shifts on the notice board. One-time purchase." },
+  { id: "study", name: "Practice filing at the stall", cost: 18, minutes: 80, energy: -8,
+    detail: "Gain five focus per session; at 10 focus the civic records job opens." },
+]);
+const bounded = (n, lo, hi, fallback) =>
+  Number.isFinite(n) ? Math.max(lo, Math.min(hi, Math.floor(n))) : fallback;
+
+export function serviceStatus(service, nowMin, player) {
+  if (!service) return { workable: false, reason: "unknown" };
+  if (!Number.isFinite(nowMin) || nowMin < 360 || nowMin + service.minutes > DAY_END_MIN)
+    return { workable: false, reason: "no-time" };
+  if (service.id === "bicycle" && player.inventory?.bicycle)
+    return { workable: false, reason: "owned" };
+  if (service.id === "study" && (player.skills?.focus ?? 0) >= 10)
+    return { workable: false, reason: "trained" };
+  if (player.money < service.cost) return { workable: false, reason: "money" };
+  if (service.energy > 0 && player.energy >= 100)
+    return { workable: false, reason: "rested" };
+  if (service.energy < 0 && player.energy < -service.energy)
+    return { workable: false, reason: "tired" };
+  return { workable: true, reason: "" };
+}
+
+export function restoreHarborPocket(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || raw.version !== 1) return null;
+  // Ignore unknown inventory / skills. Import is never trusted with prototypes.
+  return {
+    money: bounded(raw.money, 0, 1000000, 240),
+    energy: bounded(raw.energy, 0, 100, 100),
+    shiftsWorked: bounded(raw.shiftsWorked, 0, 100000, 0),
+    inventory: { bicycle: raw.inventory?.bicycle === true },
+    skills: { focus: bounded(raw.skills?.focus, 0, 10, 0) },
+    mealsEaten: bounded(raw.mealsEaten, 0, 100000, 0),
+    restsTaken: bounded(raw.restsTaken, 0, 100000, 0),
+    studySessions: bounded(raw.studySessions, 0, 2, 0),
+    day: bounded(raw.day, 1, 1000, 1),
+    minute: bounded(raw.minute, 360, 1439, 480),
+  };
+}
+
 export function createPlayerState(opts = {}) {
   return {
     // $240 is the "Carried debt" starting cash from the book's opening: you
     // arrive in Haiyun City owing money, so every shift counts.
     money: opts.money ?? 240,
     energy: opts.energy ?? 100,
-    shiftsWorked: 0,
+    shiftsWorked: opts.shiftsWorked ?? 0,
+    inventory: { bicycle: opts.inventory?.bicycle === true },
+    skills: { focus: opts.skills?.focus ?? 0 },
+    mealsEaten: opts.mealsEaten ?? 0,
+    restsTaken: opts.restsTaken ?? 0,
+    studySessions: opts.studySessions ?? 0,
     lastWork: null, // a transient one-line result, shown on the board while it's open
+
+    /** Snapshot that can be saved on every committed action or game-day boundary. */
+    snapshot(day, minute) {
+      return { version: 1, day: bounded(day, 1, 1000, 1),
+        minute: bounded(minute, 360, 1439, 480),
+        money: this.money, energy: this.energy, shiftsWorked: this.shiftsWorked,
+        inventory: { bicycle: this.inventory.bicycle }, skills: { focus: this.skills.focus },
+        mealsEaten: this.mealsEaten, restsTaken: this.restsTaken, studySessions: this.studySessions };
+    },
+
+    service(id, nowMin) {
+      const entry = HARBOR_SERVICES.find(x => x.id === id);
+      const status = serviceStatus(entry, nowMin, this);
+      if (!status.workable) return { ok: false, reason: status.reason };
+      // Validate all constraints before any mutation.
+      this.money -= entry.cost;
+      if (entry.energy) this.energy = Math.max(0, Math.min(100, this.energy + entry.energy));
+      if (id === "bicycle") this.inventory.bicycle = true;
+      if (id === "study") {
+        this.skills.focus = Math.min(10, this.skills.focus + 5);
+        this.studySessions += 1;
+      }
+      if (id === "noodles") this.mealsEaten += 1;
+      if (id === "rest") this.restsTaken += 1;
+      return { ok: true, name: entry.name, cost: entry.cost,
+        minutes: entry.minutes, energy: entry.energy || 0,
+        focus: this.skills.focus, bicycle: this.inventory.bicycle };
+    },
 
     canWork(job, nowMin) {
       return jobStatus(job, nowMin, this).workable;

@@ -22,6 +22,19 @@ This is a web adaptation of the *City of Small Chances* game design book. The fr
 - **Multiple valid lives** — security, freedom, connection, respect or wealth.
 - **Mastery without grind** — manual work compresses once you've proven competence.
 
+## AincFh playable extension: Harbour living economy
+
+At the 3D harbour notice board, work a real shift for wages and spend the time and energy required. Mei's nearby noodle stall is now an actual interaction (walk to her and press **E**, then click/press **1–4**) rather than only a static dialogue. Four services use the existing simulation clock and pocket, with no free item shortcuts:
+
+- **Noodle bowl:** pay **$12**, spend **35 city minutes**, and recover **23 energy** (never above 100).
+- **Rest on the harbour:** no cash required, but spend **130 minutes** to recover **27 energy**. A real tradeoff between fatigue and work hours.
+- **Second-hand bicycle:** one-time **$95** and **45 minutes**, which unlocks the **Bike courier run** at its original shift times.
+- **Filing practice:** pay **$18**, spend **80 minutes** and **8 energy**, gaining **5 focus** per class. Two courses unlock the **Civic records desk** already present in the real job table.
+
+You cannot pay without enough cash, study while exhausted, buy equipment twice, train beyond the requirement, recover above full energy or start an activity that would cross midnight. Actions spend actual city time and are verified against the same gate as the notice board. Pocket cash, energy, shifts worked, bicycle ownership, focus, activity statistics and **world day/time** persist across refreshes in localStorage; invalid or future-version saves fall back safely. This is an offline single-player prototype, not a money/account backend.
+
+Automated Node tests cover atomic finances, career unlocks, insufficient resources, recovered time and save validation. A required real Chrome test plays a job, uses all three paid services via actual 3D interactions, verifies job unlocks, refreshes and checks a mobile-size panel. The original walk and mobile interaction tests still run.
+
 ## Current build — v0.1.3 · *An honest day's work*
 
 The experience is a **game, not a dashboard**: a full-screen, walkable **Old Harbour** in Three.js — no scrollbars, no UI panels between you and the world. As of v0.1.3 it has a **first real loop of consequence** — you arrive with **$240** and a full tank of energy, and the notice board isn't just something you read: you **take a shift** off it, earn the pay, spend the hours, and watch the day move.

@@ -139,6 +139,15 @@ export function createDayCycle(world, scene, opts = {}) {
     },
     // Test / debug hook: jump straight to a minute-of-day and relight.
     setMinutes(m) { minutes = clampMin(m); applyAt(minutes); },
+    // Restore a validated saved date along with its time; retained for the
+    // real worker/meal/rest persistence loop (not a separate fake game clock).
+    setDate(d, m) {
+      if (!Number.isSafeInteger(d) || d < 1 || d > 1000 || !Number.isFinite(m)) return false;
+      day = d;
+      minutes = clampMin(m);
+      applyAt(minutes);
+      return true;
+    },
     // fmtClock/blockFor expect whole minutes (the sim advances in integer steps);
     // our clock flows continuously, so floor before formatting.
     label() { const m = Math.floor(minutes); return `Day ${day} · ${fmtClock(m)} · ${blockFor(m).label}`; },
