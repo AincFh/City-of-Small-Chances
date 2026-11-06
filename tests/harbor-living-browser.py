@@ -42,11 +42,15 @@ with socketserver.TCPServer(("127.0.0.1",0),Handler) as server:
    assert title in browser.find_element(By.ID,"hud-panel").text,browser.find_element(By.ID,"hud-panel").text
   def click_number(i):
    # In-game buttons are the actual rendered menu buttons; no direct act() hooks.
-   btns=browser.find_elements(By.CSS_SELECTOR,"#hud-panel .panel__act")
-   target=[x for x in btns if x.find_element(By.CSS_SELECTOR,".panel__act-key").text==str(i)]
-   assert len(target)==1,{"index":i,"buttons":[x.text for x in btns]}
-   target[0].click()
-   time.sleep(.15)
+   # The world clock rerenders the panel each minute. Click the rendered
+   # button atomically to avoid Selenium stale references from that repaint.
+   clicked=browser.execute_script("""const key=String(arguments[0]);
+     const buttons=[...document.querySelectorAll('#hud-panel .panel__act')];
+     const match=buttons.find(el=>el.querySelector('.panel__act-key')?.textContent.trim()===key);
+     if(!match)return {ok:false,keys:buttons.map(el=>el.querySelector('.panel__act-key')?.textContent)};
+     match.click();return {ok:true};""",i)
+   assert clicked["ok"],{"index":i,"result":clicked}
+   time.sleep(.12)
   def close():
    browser.find_element(By.CSS_SELECTOR,"#hud-panel .panel__close").click()
    wait.until(lambda b:b.execute_script("return document.querySelector('#hud-panel').hidden"))
