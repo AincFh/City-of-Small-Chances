@@ -99,12 +99,18 @@ with socketserver.TCPServer(("127.0.0.1",0),Handler) as server:
   assert career["inStorage"]==10 and "bicycle" not in (career["courier"] or "").lower(),career
   browser.save_screenshot(str(OUT/"04-unlocked-career.png"))
   close()
+  saved_before_reload=browser.execute_script("""return JSON.parse(
+    localStorage.getItem('city-small-chances:harbor-life:v1'))""")
   browser.refresh()
   wait.until(lambda b:b.execute_script("return !!window.__game"))
   restored=snapshot()
   for k in ("money","energy","shifts","bicycle","focus","meals","study","day"):
    assert restored[k]==trained[k],{"key":k,"before":trained,"after":restored}
-  assert abs(restored["minute"]-trained["minute"])<=3,restored
+  # The actual game clock continues to advance while screenshots/CI run.
+  # Compare against the last saved value rather than a stale snapshot from
+  # many 3D frames earlier; allow for slower CI WebGL boot.
+  assert saved_before_reload["minute"]>=trained["minute"],saved_before_reload
+  assert saved_before_reload["minute"]<=restored["minute"]<=saved_before_reload["minute"]+90,{"saved":saved_before_reload,"restored":restored}
   browser.set_window_size(390,844)
   visit(-5,4,"Mei")
   mobile=browser.execute_script("""const el=document.querySelector('#hud-panel .panel__card'),r=el.getBoundingClientRect();
