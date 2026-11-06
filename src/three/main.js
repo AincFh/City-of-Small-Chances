@@ -9,7 +9,7 @@ import { buildWorld } from "./world.js";
 import { createDayCycle } from "./daycycle.js";
 import { createInteractions } from "./interactions.js";
 import { createInteractionUI, createStatsHUD } from "./ui.js";
-import { createPlayerState } from "./playerstate.js";
+import { createPlayerState, restoreHarborPocket } from "./playerstate.js";
 import { createFigure } from "./player.js";
 import { Input } from "./input.js";
 import { createAudio } from "./audio.js";
@@ -73,6 +73,12 @@ function start() {
 
   const world = buildWorld(scene);
   const day = createDayCycle(world, scene, { startMin: 480 }); // open at 08:00
+  // Keep the same simulation pocket/clock across visits, never replay old wages.
+  // A malformed or future-version save is ignored without crashing WebGL.
+  const STORAGE_KEY = "city-small-chances:harbor-life:v1";
+  let previousSave = null;
+  try { previousSave = restoreHarborPocket(JSON.parse(localStorage.getItem(STORAGE_KEY))); } catch {}
+  if(previousSave) day.setDate(previousSave.day, previousSave.minute);
 
   const clockEl = document.getElementById("clock");
   let lastClock = "";
@@ -86,7 +92,11 @@ function start() {
   const input = new Input(canvas);
 
   // The player's pocket — money + energy — shown in the corner HUD.
-  const pstate = createPlayerState();
+  const pstate = createPlayerState(previousSave || {});
+  const savePocket = () => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pstate.snapshot(day.day, day.minutes))); } catch {}
+  };
+  window.addEventListener("pagehide", savePocket);
   const hud = createStatsHUD();
   hud.set(pstate.money, pstate.energy);
   { const w = weatherFor(day.day); hud.setWeather(w.rain, w.fog); world.setOvercast(wetnessFor(w)); } // the day's sky
@@ -131,6 +141,7 @@ function start() {
     if (!activePoint || !activePoint.act) return;
     const res = activePoint.act(i, { nowMin: day.minutes, pstate, day });
     hud.set(pstate.money, pstate.energy);
+    if(res?.ok)savePocket();
     // A worked shift gets its own family texture (which ends in the coin payout)
     // plus a brief painted montage of the work (fx-007); any other successful act
     // just chimes the coins. A blocked one buzzes.
@@ -328,6 +339,7 @@ function start() {
     // world re-emerges through a warm dawn wash.
     if (day.day !== lastDay) {
       lastDay = day.day;
+      savePocket();
       hud.playDayTransition();
       const w = weatherFor(day.day); // the new day brings its own weather, masked
       hud.setWeather(w.rain, w.fog);  // by the transition veil so the swap is unseen
@@ -356,7 +368,7 @@ function start() {
   window.addEventListener("resize", onResize);
 
   // Debug / test hook: lets the headless smoke read state and drive the world.
-  window.__game = { THREE, scene, camera, renderer, player, world, input, CAM, day, interactions, ui, pstate, hud, audio };
+  window.__game = { THREE, scene, camera, renderer, player, world, input, CAM, day, interactions, ui, pstate, hud, audio, savePocket };
 
   requestAnimationFrame(tick);
 
