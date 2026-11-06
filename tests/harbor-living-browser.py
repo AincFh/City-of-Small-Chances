@@ -39,7 +39,8 @@ with socketserver.TCPServer(("127.0.0.1",0),Handler) as server:
    wait.until(lambda b:b.execute_script("return !!window.__game.interactions.nearest()"))
    ActionChains(browser).send_keys("e").perform()
    wait.until(lambda b:b.execute_script("return !document.querySelector('#hud-panel').hidden"))
-   assert title in browser.find_element(By.ID,"hud-panel").text,browser.find_element(By.ID,"hud-panel").text
+   panel_text=browser.execute_script("return document.querySelector('#hud-panel').textContent")
+   assert title in panel_text,panel_text
   def click_number(i):
    # In-game buttons are the actual rendered menu buttons; no direct act() hooks.
    # The world clock rerenders the panel each minute. Click the rendered
@@ -75,15 +76,16 @@ with socketserver.TCPServer(("127.0.0.1",0),Handler) as server:
   click_number(3) # Bicycle: $95
   equipped=snapshot()
   assert equipped["bicycle"] and equipped["money"]==171,equipped
-  assert any("already own a bicycle" in x.lower() for x in
-    [el.text for el in browser.find_elements(By.CSS_SELECTOR,"#hud-panel .panel__row")])
+  assert browser.execute_script("""return [...document.querySelectorAll('#hud-panel .panel__row')]
+    .some(el=>el.textContent.toLowerCase().includes('already own a bicycle'))""")
   click_number(4) # First focus session $18, -8 energy, +5 focus
   first=snapshot()
   assert first["focus"]==5 and first["study"]==1 and first["money"]==153,first
   click_number(4)
   trained=snapshot()
   assert trained["focus"]==10 and trained["study"]==2 and trained["money"]==135,trained
-  assert not any("Practice filing" in x.text for x in browser.find_elements(By.CSS_SELECTOR,"#hud-panel .panel__act"))
+  assert not browser.execute_script("""return [...document.querySelectorAll('#hud-panel .panel__act')]
+    .some(el=>el.textContent.includes('Practice filing'))""")
   browser.save_screenshot(str(OUT/"03-trained-with-bicycle.png"))
   close()
   visit(5,-6,"notice board")
