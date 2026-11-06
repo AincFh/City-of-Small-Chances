@@ -9,7 +9,7 @@
 import { JOBS } from "../data/jobs.js";
 import { NPCS } from "../data/npcs.js";
 import { fmtClock } from "../core/time.js";
-import { jobStatus } from "./playerstate.js";
+import { jobStatus, HARBOR_SERVICES, serviceStatus } from "./playerstate.js";
 
 const RADIUS = 3.4; // metres: how close you must stand to get the prompt
 
@@ -36,8 +36,9 @@ const portraitFor = (npc, tier = "stranger") => {
 };
 
 // Mei's stall — a first taste of the relationship system, read from npcs.js.
-function vendorPanel() {
+function vendorPanel(ctx) {
   const mei = NPCS.find((n) => n.id === "mei") || NPCS[0];
+  const {pstate,nowMin}=ctx;
   return {
     title: `${mei.icon || ""} ${mei.name} · ${mei.role}`.trim(),
     accent: mei.color || "#e0833c",
@@ -49,8 +50,43 @@ function vendorPanel() {
       mei.pressure ? `On her mind: ${mei.pressure}` : "",
       mei.offersMeal && mei.favour ? `Once she trusts you: ${mei.favour.label} — ${mei.favour.note}.` : "",
     ].filter(Boolean),
-    foot: "Sitting down for a real conversation arrives in a coming update.",
+    banner: pstate.lastWork || null,
+    items: HARBOR_SERVICES.map((service,i)=>{
+      const st=serviceStatus(service,nowMin,pstate);
+      const why={
+        "no-time":"Not enough daylight left for this activity",
+        "owned":"You already own a bicycle",
+        "trained":"You have mastered the focus requirement (10/10)",
+        "money":"Not enough cash in your pocket",
+        "rested":"You're already fully rested",
+        "tired":"Not enough energy to study",
+      }[st.reason]||"";
+      const suffix=service.id==="study"
+        ? " · focus "+(pstate.skills?.focus||0)+"/10"
+        : service.id==="bicycle"&&pstate.inventory?.bicycle?" · owned":"";
+      return {state:st.workable?"open":"locked",key:i+1,label:service.name,
+        sub:service.detail+" · $"+service.cost+" · "+hours(service.minutes)+suffix,
+        note:st.workable?"":why};
+    }),
+    foot: "Work, spend, recover and qualify for better jobs. Each action changes the real clock and your saved pocket.",
   };
+}
+
+// Buying food, resting, buying a bicycle and training are real in-world actions.
+function vendorAct(i,ctx){
+  const {nowMin,pstate,day}=ctx;
+  const service=HARBOR_SERVICES[i];
+  if(!service)return {ok:false,reason:"unknown"};
+  const res=pstate.service(service.id,nowMin);
+  if(!res.ok)return res;
+  if(day&&typeof day.setMinutes==="function")day.setMinutes(nowMin+res.minutes);
+  const current=day&&typeof day.minutes==="number"?Math.floor(day.minutes):nowMin+res.minutes;
+  pstate.lastWork="✓ "+service.name+": "+(res.cost?"paid $"+res.cost:"no charge")+
+    (res.energy?" · energy "+(res.energy>0?"+":"")+res.energy:"")+
+    (service.id==="study"?" · focus "+res.focus+"/10":"")+
+    (service.id==="bicycle"?" · bicycle owned":"")+
+    ". It is now "+fmtClock(current)+".";
+  return res;
 }
 
 // The notice board — every job going across the city, read live from jobs.js and
@@ -104,7 +140,7 @@ function boardAct(i, ctx) {
 
 // Anchored to real world positions; world.js places matching props/markers here.
 export const INTERACTABLES = [
-  { id: "vendor", x: -5, z: 4,  marker: 0xffb347, label: "Talk to Mei at the noodle stall", panel: vendorPanel() },
+  { id: "vendor", x: -5, z: 4,  marker: 0xffb347, label: "Eat, rest or train at Mei\'s stall", build: vendorPanel, act: vendorAct },
   { id: "board",  x: 5,  z: -6, marker: 0x6fa8ff, label: "Read the harbour notice board",   build: boardBuild, act: boardAct },
 ];
 
